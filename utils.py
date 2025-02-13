@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 import requests
+import os
+
+siliconflow_key = os.getenv('siliconflowkey')
 
 def get_resp_siliconflow():
     url = "https://api.siliconflow.cn/v1/chat/completions"
@@ -49,7 +52,7 @@ def get_resp_siliconflow():
         ]
     }
     headers = {
-        "Authorization": "Bearer sk-hwxzfpkjrktpjivdglfaqjosbxzinvqirfxaitzqgoatiecs",
+        "Authorization": "Bearer " + siliconflow_key,
         "Content-Type": "application/json"
     }
 

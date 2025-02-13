@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
-
+import loguru
 import requests
 from lxml import etree
 from functools import lru_cache
@@ -16,6 +16,7 @@ def get_dict(page_tree, category_spec_name):
 
 
 def get_info(category_name):
+	loguru.logger(f'正在获取{category_name}的类别信息...')
 	info_dict = {}
 	index_url = 'https://www.chem17.com/exhibition/t0/list.html'
 	index = get_index(index_url)
@@ -23,7 +24,7 @@ def get_info(category_name):
 	page_tree = etree.HTML(index)
 	if category_name == 'field':
 		eles = page_tree.xpath('//ul[@class="public-category showone"]')[0].xpath('./li[position()>1]/a')  # 分类ul标签
-	else:
+	elif category_name == 'province':
 		eles = page_tree.xpath('//ul[@class="public-category showone"]')[1].xpath('./li[position()>1]/a')  # 省市ul标签
 
 	for ele in eles:
@@ -49,6 +50,7 @@ def get_info(category_name):
 				next_info_dict = get_dict(next_page_tree, name)
 				info_dict.update(next_info_dict)
 		# break
+	loguru.logger(f'{category_name}类别信息获取完毕...')
 	return info_dict
 
 
@@ -68,6 +70,9 @@ def parse_detail(detail_url):
 	return content
 
 def parse_index(page_tree: etree.ElementTree):
+	field_dict = get_info('field')
+	province_dict = get_info('province')
+
 	items = page_tree.xpath('//div[@class="main"]//div[@class="left"]/ul/li')
 	for item in items:
 		field = '展览'
@@ -107,5 +112,5 @@ def main():
 
 if __name__ == '__main__':
 	# main()
-	res = get_info('field')
+	res = get_info('province')
 	print(res)

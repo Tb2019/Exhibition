@@ -5,6 +5,14 @@ import requests
 from lxml import etree
 from functools import lru_cache
 
+def get_category_info():
+	index_url = 'https://www.chem17.com/exhibition/t0/list_ch0_pid0.html'
+	index = get_index(index_url)
+
+	page_tree = etree.HTML(index)
+	category_eles = page_tree.xpath('//ul[@class="public-category showone"]')[0].xpath('./li[position()>1]/a')  # 分类ul标签
+	province_eles = page_tree.xpath('//ul[@class="public-category showone"]')[1].xpath('./li[position()>1]/a')  # 省市ul标签
+
 
 # @lru_cache
 def get_index(index_url):

@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
+import json
+import os
 import re
 import loguru
 import requests
 from lxml import etree
 from functools import lru_cache
+
+from utils import get_resp_siliconflow, Saver
 
 
 def get_dict(page_tree, category_spec_name):
@@ -11,12 +15,18 @@ def get_dict(page_tree, category_spec_name):
 	items = page_tree.xpath('//div[@class="main"]//div[@class="left"]/ul/li')
 	for item in items:
 		name = item.xpath('./div[@class="text"]//a/text()')[0]
-		info_dict.setdefault(name, []).append(category_spec_name)
+		# info_dict.setdefault(name, []).append(category_spec_name)
+		info_dict[name] = category_spec_name
 	return info_dict
 
 
 def get_info(category_name):
-	loguru.logger(f'正在获取{category_name}的类别信息...')
+	if os.path.exists(category_name + '.json'):
+		print(f'读取{category_name}类别缓存...')
+		with open(category_name + '.json', 'r', encoding='utf-8') as f:
+			data = json.load(f)
+		return data
+	loguru.logger.info(f'正在获取{category_name}的类别信息...')
 	info_dict = {}
 	index_url = 'https://www.chem17.com/exhibition/t0/list.html'
 	index = get_index(index_url)
@@ -50,7 +60,10 @@ def get_info(category_name):
 				next_info_dict = get_dict(next_page_tree, name)
 				info_dict.update(next_info_dict)
 		# break
-	loguru.logger(f'{category_name}类别信息获取完毕...')
+	with open(category_name + '.json', 'w', encoding='utf-8') as f:
+		json.dump(info_dict, f, ensure_ascii=False)
+
+	loguru.logger.info(f'{category_name}类别信息获取完毕...')
 	return info_dict
 
 
@@ -67,36 +80,66 @@ def parse_detail(detail_url):
 	detail_tree = etree.HTML(detail_index)
 	content_ele = detail_tree.xpath('//div[@class="exhi-content"]')[0]
 	content = etree.tostring(content_ele, encoding='utf-8').decode('utf-8')
-	return content
+	try:
+		res = get_resp_siliconflow()(content)['choices'][0]['message']['content']
+		parse_json = json.loads(re.sub(r'^.*?(\{.*}).*?$', r'\1', res, flags=re.S))
+	except:
+		parse_json = [{"主办单位": '', "联系方式": []}]
+	print(parse_json)
+	return content, parse_json
 
 def parse_index(page_tree: etree.ElementTree):
-	field_dict = get_info('field')
-	province_dict = get_info('province')
-
 	items = page_tree.xpath('//div[@class="main"]//div[@class="left"]/ul/li')
 	for item in items:
-		field = '展览'
+		type = '展览'
+
+		try:
+			item.xpath('./div[@class="text"]/div[@class="bottom"]/b[2]//a')[0]
+			form = '线上'
+		except:
+			form = '线下'
+
 		cover = item.xpath('./div[@class="image"]//img/@src')[0]
 
 		name = item.xpath('./div[@class="text"]//a/text()')[0]
+		try:
+			summary = item.xpath('./div[@class="text"]/span/text()')[0]
+		except:
+			summary = None
 
 		time = item.xpath('./div[@class="text"]/div[@class="bottom"]/b[1]/text()')[0]
-		year = re.match(r'^\d{4}', time).group()
+		year = re.match(r'^\s*\d{4}', time).group()
+
+		province = province_dict.get(name, None)
+		field = field_dict.get(name, '其他')
+
 		time = re.sub(r'-', '/', time)
 		time = re.sub(r' ~ ', '--', time)
 
 		place = item.xpath('./div[@class="text"]/div[@class="bottom"]/b[2]/text()')[0]
-		type = '线下'
-		try:
-			item.xpath('./div[@class="text"]/div[@class="bottom"]/b[2]//a')
-			type = '线上'
-		except:
-			pass
 
 		detail_url = item.xpath('./div[@class="text"]//a/@href')[0]
-		content = parse_detail(detail_url)
-		print(name, time, place, content)
-		break
+		content, parse_json = parse_detail(detail_url)
+		organizer = parse_json.get('主办单位') if parse_json.get('主办单位') else '详情见下文'
+		contact_detail = str(parse_json.get('联系方式')) if parse_json.get('联系方式') else None
+		annex = None
+		# print(field, '\n', type, '\n', form, '\n', year, '\n', province, '\n', cover, '\n', name, '\n', time, '\n', place, '\n', organizer, '\n', summary, '\n', content, '\n', contact_detail, '\n', annex)
+		yield {
+			'field': field,
+			'type': type,
+			'form': form,
+			'year': year,
+			'province': province,
+			'cover': cover,
+			'name': name,
+			'time': time,
+			'place': place,
+			'organizer': organizer,
+			'summary': summary,
+			'content': content,
+			'contact_detail': contact_detail,
+			'annex': annex
+		}
 
 def main():
 	index_urls = ['https://www.chem17.com/exhibition/t0/list_ch0_pid0.html',
@@ -106,11 +149,18 @@ def main():
 		index = get_index(index_url)
 
 		page_tree = etree.HTML(index)
-		parse_index(page_tree)
+		res_gen = parse_index(page_tree)
+
+		# with open('result.json', 'a', encoding='utf-8') as f:
+		for res in res_gen:
+			# json.dump(res, f, ensure_ascii=False)
+				saver.save(res)
+	saver.close()
 
 
 
 if __name__ == '__main__':
-	# main()
-	res = get_info('province')
-	print(res)
+	field_dict = get_info('field')
+	province_dict = get_info('province')
+	saver = Saver()
+	main()

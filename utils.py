@@ -1,25 +1,32 @@
 # -*- coding: utf-8 -*-
+import json
+import re
+
+import pymysql
 import requests
 import os
 
-siliconflow_key = os.getenv('siliconflowkey')
+# siliconflow_key = os.getenv('siliconflowkey')
+siliconflow_key = 'sk-YlWHzl9vAgp7tEPZEmszPnxGzCVzpUuXGfNOSg5gpejzTdFv'
 
 def get_resp_siliconflow():
-    url = "https://api.siliconflow.cn/v1/chat/completions"
+    url = "https://api.aicnn.cn/v1/chat/completions"
     prompt = """
                 ##角色
                     你是一位会展信息提取专家，善于从html格式的有关会展的文本中提取需要的信息。
                 ##技能
                     #技能1：提取主办单位
-                        从给定的文本中提取出主办单位的名称,没有则为None
+                        提取出主办单位的名称,没有则为''
                     #技能2：提取联系方式
-                        从给定的文本中提取联系人，联系电话和邮箱信息，没有则为None。可能有多个联系方式
+                        提取联系人，联系电话和邮箱信息，没有则为''。可能有多个联系方式。
                 ##输出格式
-                    使用json格式输出。{"主办单位":"", "联系方式":[{"联系人":"", "电话":"", "邮箱":""}, {"联系人":"", "电话":"", "邮箱":""}...]}
+                    -使用json格式输出。
+                    -样例：{"主办单位":"", "联系方式":[{"联系人":"", "电话":"['','',...]", "邮箱":"['','',...]"},...]}
+                    -严格按照样例的格式，严禁篡改key如"c电话"
     """
 
     payload = {
-        "model": "Qwen/Qwen2.5-72B-Instruct",
+        "model": "deepseek-chat",
         "messages": [
             {
                 "role": "system",
@@ -62,6 +69,35 @@ def get_resp_siliconflow():
         return response.json()
     return inner
 
+class Saver:
+    config = json.loads(os.getenv('comp_local_sql_config'))
+    db = 'alpha_search_update'
+    table = 'search_exhibition'
+
+    def __init__(self, ):
+        # self.host = self.config['host']
+        # self.port = self.config['port']
+        # self.password = self.config['password']
+        self.conn = pymysql.connect(db=self.db,**self.config)
+        self.cursor = self.conn.cursor()
+
+    def save(self, item):
+        keys = ','.join(item.keys())
+        values = ','.join(['%s'] * len(item))
+
+        sql = f'insert into {self.table} ({keys}) values({values})'
+        try:
+            self.cursor.execute(sql, tuple(item.values()))
+            self.conn.commit()
+            print('存储成功')
+        except Exception as e:
+            self.conn.rollback()
+            print('存储失败', e)
+
+    def close(self):
+        self.conn.close()
+
+
 if __name__ == "__main__":
     content = """
     <div class="exhi-content">
@@ -70,4 +106,8 @@ if __name__ == "__main__":
 					</div>
                 </div>
     """
-    print(get_resp_siliconflow()(content)['choices'][0]['message']['content'])
+    res = get_resp_siliconflow()(content)['choices'][0]['message']['content']
+    res = re.sub(r'^.*?(\{.*}).*?$', r'\1', res, flags=re.S)
+    # res = re.sub(r'(,\s*)(?=}$)', '', res, flags=re.S)
+    enf = json.loads(res)
+    print(enf, type(enf))

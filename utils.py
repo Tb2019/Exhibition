@@ -6,8 +6,7 @@ import pymysql
 import requests
 import os
 
-# siliconflow_key = os.getenv('siliconflowkey')
-siliconflow_key = 'sk-YlWHzl9vAgp7tEPZEmszPnxGzCVzpUuXGfNOSg5gpejzTdFv'
+siliconflow_key = os.getenv('siliconflowkey')
 
 def get_resp_siliconflow():
     url = "https://api.aicnn.cn/v1/chat/completions"
